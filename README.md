@@ -85,7 +85,7 @@ Trade intents are mocked in this release; routing is on the roadmap.
 | CoinGecko      | Drift           | Public    |
 | BscScan        | Cast (top-10 holders) | BYOK |
 | OpenAI         | Cast            | Shared or BYOK |
-| Google Gemini  | Cast / Agent    | Shared (Lovable AI Gateway) or BYOK |
+| Google Gemini  | Cast / Agent    | Shared (AI Gateway) or BYOK |
 | Anthropic      | Cast (Pro/Elite)| BYOK      |
 
 ---
@@ -94,8 +94,8 @@ Trade intents are mocked in this release; routing is on the roadmap.
 
 - **Framework:** TanStack Start v1 (React 19, Vite 7, file-based routing, SSR)
 - **Wallet:** RainbowKit + Wagmi (BNB Chain)
-- **Backend:** Lovable Cloud (Supabase) + edge server functions
-- **AI:** Lovable AI Gateway (Gemini 2.5 Flash default) + per-provider BYOK
+- **Backend:** Supabase + edge server functions
+- **AI:**  AI Gateway (Gemini 2.5 Flash default) + per-provider BYOK
 - **Styling:** Tailwind v4 with semantic tokens in `src/styles.css`
 - **State / data:** TanStack Query, localStorage (BYOK keys, cache, last-used provider)
 - **Animation:** Framer Motion + custom CSS

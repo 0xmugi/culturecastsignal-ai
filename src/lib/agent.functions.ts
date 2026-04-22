@@ -1,4 +1,4 @@
-// Lovable AI agent for the Tracked page command bar.
+// AI agent for the Tracked page command bar.
 // Uses Gemini 2.5 Flash with structured tool calling to resolve a natural-
 // language prompt + the user's current watchlist into a typed action.
 
@@ -50,12 +50,12 @@ Rules:
 export const runAgentCommand = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }): Promise<AgentAction> => {
-    const apiKey = process.env.LOVABLE_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return {
         ok: false,
         intent: "unknown",
-        message: "AI agent not configured (missing LOVABLE_API_KEY).",
+        message: "AI agent not configured (missing GEMINI_API_KEY).",
       };
     }
 
@@ -70,22 +70,19 @@ export const runAgentCommand = createServerFn({ method: "POST" })
     const userMessage = `WATCHLIST:\n${tokenList || "(empty)"}\n\nUSER PROMPT: ${data.prompt}`;
 
     try {
-      const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userMessage },
-          ],
-          tools: [
-            {
-              type: "function",
-              function: {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-goog-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: [{ parts: [{ text: userMessage }] }],
+            tools: [{
+              functionDeclarations: [{
                 name: "execute_action",
                 description: "Resolve the user's natural-language prompt into a concrete trading action.",
                 parameters: {
@@ -95,42 +92,24 @@ export const runAgentCommand = createServerFn({ method: "POST" })
                       type: "string",
                       enum: ["buy", "sell", "swap", "track", "help", "unknown"],
                     },
-                    resolvedTokenId: {
-                      type: "string",
-                      description:
-                        "Token contract address (from the watchlist's id field) for buy/sell/track. Empty for swap/help/unknown.",
-                    },
-                    resolvedTokenLabel: {
-                      type: "string",
-                      description: "Human label like '$DBOSS (Doge Boss)'. Empty if not applicable.",
-                    },
-                    amount: {
-                      type: "string",
-                      description:
-                        "For buy: amount in BNB (e.g. '0.05'). For sell: percentage like '50%' or '100%'. For swap: '<amt> <fromSymbol>'.",
-                    },
-                    swapTo: {
-                      type: "string",
-                      description: "Target token symbol or address for swap intent. Empty otherwise.",
-                    },
-                    message: {
-                      type: "string",
-                      description: "Short crypto-native confirmation/explanation, under 140 chars.",
-                    },
-                    reasoning: {
-                      type: "string",
-                      description: "One-sentence reason you picked this token / intent.",
-                    },
+                    resolvedTokenId: { type: "string" },
+                    resolvedTokenLabel: { type: "string" },
+                    amount: { type: "string" },
+                    swapTo: { type: "string" },
+                    message: { type: "string" },
+                    reasoning: { type: "string" },
                   },
                   required: ["intent", "message"],
-                  additionalProperties: false,
                 },
-              },
+              }],
+            }],
+            toolConfig: {
+              functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["execute_action"] },
             },
-          ],
-          tool_choice: { type: "function", function: { name: "execute_action" } },
-        }),
-      });
+            generationConfig: { temperature: 0.4 },
+          }),
+        }
+      );
 
       if (res.status === 429) {
         return {
@@ -143,7 +122,7 @@ export const runAgentCommand = createServerFn({ method: "POST" })
         return {
           ok: false,
           intent: "unknown",
-          message: "Lovable AI credits exhausted. Add funds in Workspace settings.",
+          message: " AI credits exhausted. Add funds in Workspace settings.",
         };
       }
       if (!res.ok) {
@@ -155,27 +134,45 @@ export const runAgentCommand = createServerFn({ method: "POST" })
           message: `Agent error (${res.status}). Try a simpler prompt.`,
         };
       }
-
       const json = (await res.json()) as {
-        choices?: Array<{
-          message?: {
-            tool_calls?: Array<{
-              function?: { name?: string; arguments?: string };
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{
+              functionCall?: {
+                name?: string;
+                args?: {
+                  intent?: AgentIntent;
+                  resolvedTokenId?: string;
+                  resolvedTokenLabel?: string;
+                  amount?: string;
+                  swapTo?: string;
+                  message?: string;
+                  reasoning?: string;
+                };
+              };
             }>;
           };
         }>;
       };
 
-      const call = json.choices?.[0]?.message?.tool_calls?.[0];
-      if (!call?.function?.arguments) {
+      const call = json.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+      if (!call?.args) {
         return {
           ok: false,
           intent: "unknown",
           message: "Agent returned no action. Try rephrasing.",
         };
       }
-
-      let parsed: {
+      
+      const parsed: {
+        intent?: AgentIntent;
+        resolvedTokenId?: string;
+        resolvedTokenLabel?: string;
+        amount?: string;
+        swapTo?: string;
+        message?: string;
+        reasoning?: string;
+      } = call.args as {
         intent?: AgentIntent;
         resolvedTokenId?: string;
         resolvedTokenLabel?: string;
@@ -184,22 +181,13 @@ export const runAgentCommand = createServerFn({ method: "POST" })
         message?: string;
         reasoning?: string;
       };
-      try {
-        parsed = JSON.parse(call.function.arguments);
-      } catch {
-        return {
-          ok: false,
-          intent: "unknown",
-          message: "Agent returned malformed action. Try again.",
-        };
-      }
-
+      
       const intent = (parsed.intent ?? "unknown") as AgentIntent;
       const details: Record<string, string> = {};
       if (parsed.amount) details.amount = parsed.amount;
       if (parsed.swapTo) details.swapTo = parsed.swapTo;
       if (parsed.resolvedTokenId) details.contract = shortAddr(parsed.resolvedTokenId);
-
+      
       return {
         ok: intent !== "unknown",
         intent,
@@ -209,15 +197,15 @@ export const runAgentCommand = createServerFn({ method: "POST" })
         reasoning: parsed.reasoning,
         details: Object.keys(details).length ? details : undefined,
       };
-    } catch (err) {
-      console.error("runAgentCommand failed:", err);
-      return {
-        ok: false,
-        intent: "unknown",
-        message: "Agent unreachable. Check connection and retry.",
-      };
-    }
-  });
+      } catch (err) {
+        console.error("runAgentCommand failed:", err);
+        return {
+          ok: false,
+          intent: "unknown",
+          message: "Agent unreachable. Check connection and retry.",
+        };
+      }
+      });
 
 function shortAddr(a: string) {
   if (!a) return "";

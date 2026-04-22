@@ -84,7 +84,7 @@ export function AgentCommandBar({
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-secondary/30">
         <div className="flex items-center gap-2 text-[11px] font-data uppercase tracking-wider">
           <Sparkles size={12} className="text-primary" />
-          <span>Agent · Lovable AI (Gemini 2.5 Flash)</span>
+          <span>Agent · AI (Gemini 2.5 Flash)</span>
           <span className="text-[color:var(--text-faint)] hidden sm:inline">— natural-language trading</span>
         </div>
         <button
@@ -182,7 +182,7 @@ export function AgentCommandBar({
           )}
 
           <div className="text-[9px] font-data text-[color:var(--text-faint)] uppercase tracking-wider pt-1 border-t border-border">
-            ⚠ Mock environment — no real transactions are executed. Powered by Lovable AI.
+            ⚠ Mock environment — no real transactions are executed.
           </div>
         </div>
       )}
